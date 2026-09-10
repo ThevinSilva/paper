@@ -61,13 +61,9 @@ export class AnnotationController {
 		
 		loadOverlayer()
 			.then((m) => {
-				this.#overlayer = m;
-			})
-			.catch((e) => console.warn("annotations unavailable", e));
-		// view.addEventListener("relocate", this.#onRelocate);
+				this.#overlayer = m.Overlayer;
 
-		// note : use onSection
-		this.#reader.onSection(() => {
+				this.#reader.view.addEventListener("relocate", () => {
 			const view = this.#reader.view;
 
 			if (!view) return;
@@ -77,14 +73,21 @@ export class AnnotationController {
 				const { index, anchor } = view.resolveCFI(value);
 
 				// Get specific overlayer
-				console.log(index)
 				const content = view.renderer
 				?.getContents()
-				?.find((c: any) => c.index === index);
+					?.find((c: any) => {
+						console.log(`this is the c index ${index}`);
+						return c.index === index
+				});
+
+				if (!content?.overlayer) continue;
+				// console.log(index)
 
 				const range = anchor(content.doc);
 
-				content?.overlayer.add(key, range, this.#overlayer.highlight, { color : "red" } )
+				console.log(this.#overlayer)
+
+				content.overlayer.add(key, range, this.#overlayer.highlight, { color : "blue" } )
 				
 
 
@@ -100,6 +103,12 @@ export class AnnotationController {
 				// overlayer.add(annotation, Overlayer);
 				}
 		});
+			})
+			.catch((e) => console.warn("annotations unavailable", e));
+		// view.addEventListener("relocate", this.#onRelocate);
+
+		// note : use onSection
+		
 	}
 
 	detatch() { 
