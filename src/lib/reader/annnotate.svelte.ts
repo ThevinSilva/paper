@@ -9,7 +9,8 @@ export type Annotation = {
 	index: number,
 	value : string, // Note this is a CFI string 
 	color: string,
-	createdAt : Date
+	createdAt: Date
+	option: Object
 }
  
 function loadAnnotations(bookId: number): Annotation[] {
@@ -22,15 +23,9 @@ function loadAnnotations(bookId: number): Annotation[] {
 		color: "red",
 		value: "epubcfi(/6/8!/4/2[halftitlepage]/2,/1:0,/1:7)",
 		createdAt: new Date(),
+		option: {color : "blue"}
 	}];
 }
-
-// from what I understand epubcfi is in static for whatever reason this is some kinda funky work around
-const CFI_URL = "/foliate-js/epubcfi.js";
-let cfiModule: Promise<any> | null = null;
-const loadCFI = (): Promise<any> =>
-	(cfiModule ??= import(/* @vite-ignore */ CFI_URL));
-
 
 const OVERLAYER_URL = "/foliate-js/overlayer.js";
 let overlayerModule: Promise<any> | null = null;
@@ -41,82 +36,36 @@ const loadOverlayer = (): Promise<any> =>
 export class AnnotationController {
 	#reader: any = null;
 	#bookid = 0;
-	#cfi = $state<any>(null); // epubcfi.js, once it lands
-	#overlayer = $state<any>(null); // epubcfi.js, once it lands
+	#overlayer = $state<any>(null); // overlayer.js, once it lands offers draw methods
 	#docs = new Map<Document, () => void>();
-	#dragging = false;
 	annotations = $state<Annotation[]>([])
+	#dragging = false;
+	panelOpen = $state(false);
 
 
-	attach(reader: ReaderController, bookId: number) {
-		this.#reader= reader;
-		this.#bookid = bookId;
-		this.annotations = loadAnnotations(bookId);
+	attach(reader: ReaderController) {
+		this.#reader = reader;
+		if (!reader.book) {
+			console.warn("Annotations: book not found");
+			return;
+		}
+		this.#bookid = reader.book.id;
+		this.annotations = loadAnnotations(this.#bookid);
 
-		loadCFI()
-			.then((m) => {
-				this.#cfi = m;
-			})
-			.catch((e) => console.warn("annotations unavailable", e));
-		
 		loadOverlayer()
-			.then((m) => {
-				this.#overlayer = m.Overlayer;
+		.then((m) => {
+			this.#overlayer = m.Overlayer;
+		})
+		.catch((e) => console.warn("annotations unavailable", e));
 
-				this.#reader.view.addEventListener("relocate", () => {
-			const view = this.#reader.view;
-
-			if (!view) return;
-
-			// if (!overlayer) return;
-			for (let { key, value } of this.annotations) {
-				const { index, anchor } = view.resolveCFI(value);
-
-				// Get specific overlayer
-				const content = view.renderer
-				?.getContents()
-					?.find((c: any) => {
-						console.log(`this is the c index ${index}`);
-						return c.index === index
-				});
-
-				if (!content?.overlayer) continue;
-				// console.log(index)
-
-				const range = anchor(content.doc);
-
-				console.log(this.#overlayer)
-
-				content.overlayer.add(key, range, this.#overlayer.highlight, { color : "blue" } )
-				
-
-
-            	// const { _ , anchor } = await this.resolveNavigation(value)
-				// const range = anchor;
-                // overlayer.add(value, range, this.#searchDraw, this.#searchDrawOptions)
-
-
-				// console.log(`I ran ${annotation.value}`);
-				
-
-
-				// overlayer.add(annotation, Overlayer);
-				}
-		});
-			})
-			.catch((e) => console.warn("annotations unavailable", e));
-		// view.addEventListener("relocate", this.#onRelocate);
-
-		// note : use onSection
+		// drawing annotations
+		this.#reader.view.addEventListener("relocate", this.#onRelocate);
 		
-	}
-
-	detatch() { 
-		// this.#view?.removeEventListener?.("relocate", this.#onRelocate);
-		this.#reader = null;
-		// this.#pageCfi = "";
-		// this.#pageRange = null;
-
+		return () => { 
+			this.#reader.view.removeEventListener?.("relocate", this.#onRelocate);
+			this.#reader = null;
+			this.annotations = [];
+		}
 	}
 
 	observe(doc: Document, index: number) {
@@ -156,6 +105,31 @@ export class AnnotationController {
 			return typeof index === "number" && !!this.#reader?.view?.book?.sections?.[index];
 		} catch {
 			return false;
+		}
+	}
+
+	// arrow function to solve weird bug
+	#onRelocate = () => { 
+		const view = this.#reader?.view;
+
+		if (!view) {
+			console.warn("Annotations: failed loading annotations")
+			return;
+		}
+
+		for (let { key, value, option } of this.annotations) {
+			const { index, anchor } = view.resolveCFI(value);
+
+			// Get specific overlayer per index
+			const content = view.renderer
+			?.getContents()
+			?.find((c: any) => c.index === index);
+
+			if (!content?.overlayer) continue;
+
+			const range = anchor(content.doc);
+
+			content.overlayer.add(key, range, this.#overlayer.highlight, option)
 		}
 	}
 	
