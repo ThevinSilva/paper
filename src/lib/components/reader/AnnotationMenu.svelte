@@ -43,7 +43,11 @@
 {#snippet undo()}
     <div class="color-row">
         <Button icon="Undo" onclick={annotations.undo}>Undo</Button>
-        <Button icon="Eraser" onclick={annotations.undo}>Erase</Button>
+        <Button
+            icon="Eraser"
+            selected={annotations.erasing}
+            onclick={() => (annotations.erasing = !annotations.erasing)}
+        >Erase</Button>
     </div>
 {/snippet}
 

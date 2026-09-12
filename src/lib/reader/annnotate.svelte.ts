@@ -37,6 +37,8 @@ export class AnnotationController {
 	
 	option = $state({kind: "highlight", color: "#ffeb3b"});
 	panelOpen = $state(false);
+	/** A mode, not a "kind" — nothing is being drawn while this is true. */
+	erasing = $state(false);
 
 	attach(reader: ReaderController) {
 		this.#reader = reader;
@@ -57,9 +59,12 @@ export class AnnotationController {
 
 		// drawing annotations
 		this.#reader.view.addEventListener("relocate", this.#onRelocate);
+		// erase mode: tapping an existing mark fires this for free
+		this.#reader.view.addEventListener("show-annotation", this.#onShowAnnotation);
 
-		return () => { 
+		return () => {
 			this.#reader.view.removeEventListener?.("relocate", this.#onRelocate);
+			this.#reader.view.removeEventListener?.("show-annotation", this.#onShowAnnotation);
 			this.#reader = null;
 			this.annotations = [];
 			this.sessionIds = [];
@@ -72,9 +77,12 @@ export class AnnotationController {
 	observe(doc: Document, index: number) {
 		if (this.#docs.has(doc)) return;
 
-		const up = async () =>  {
+		const up = async () => {
+			if (this.erasing) return;
+			// temporary until ink is implemented
+			if (this.option.kind !== "highlight") return;
 			const sel = doc.getSelection();
-			if (sel && this.panelOpen && sel.toString().length > 0) { 
+			if (sel && this.panelOpen && sel.toString().length > 0) {
 				const cfi = this.#reader.view.getCFI(index, sel.getRangeAt(0))
 
 				const draft: Omit<Annotation, "id">  = {
@@ -119,16 +127,19 @@ export class AnnotationController {
 		if (annotation) this.#eraseDrawing(annotation.value, id);
 	}
 
-
-
-	#resolves(cfi: string): boolean {
-		try {
-			const { index } = this.#reader?.view?.resolveCFI?.(cfi) ?? {};
-			return typeof index === "number" && !!this.#reader?.view?.book?.sections?.[index];
-		} catch {
-			return false;
-		}
+	/** Erase mode: tapping an existing mark deletes it. `show-annotation`
+	 *  already fires with the tapped key for any drawn overlayer entry, so
+	 *  there's no hit-testing to write ourselves. */
+	#onShowAnnotation = async (e: any) => {
+		if (!this.erasing) return;
+		const id = Number(e.detail?.value);
+		if (Number.isNaN(id)) return;
+		const annotation = this.annotations.find((a) => a.id === id);
+		this.annotations = this.annotations.filter((a) => a.id !== id);
+		await library.deleteAnnotation(id);
+		if (annotation) this.#eraseDrawing(annotation.value, id);
 	}
+
 
 	// arrow function to solve weird "this" bug
 	#onRelocate = () => { 
