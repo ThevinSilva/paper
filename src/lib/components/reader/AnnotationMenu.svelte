@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { Button, ColorInput, Popover, PopoverMenu } from "glow";
-    import { AnnotationController, type Annotation } from "$lib/reader/annnotate.svelte.ts";
+    import { Button, ColorInput, PopoverMenu } from "glow";
+    import { AnnotationController } from "$lib/reader/annotate.svelte";
     import type { ReaderController } from "$lib/reader/reader.svelte";
 
     let { reader }: { reader: ReaderController } = $props();
@@ -13,14 +13,14 @@
             kind: "radio",
             options: [
                 { value: "highlight", label: "Highlight" },
-                { value: "ink", label: "Ink" },
+                { value: "ink", label: "Ink", disabled: true, tooltip: "Not built yet" },
             ],
             value: annotations.option.kind,
         },
         "divider",
         { kind: "custom", render: colorPicker },
         "divider",
-        { kind: "custom", render: undo },
+        { kind: "custom", render: actions },
     ]);
 
     // Watch the book that is actually open; re-attaches if the route changes id.
@@ -40,14 +40,11 @@
     </div>
 {/snippet}
 
-{#snippet undo()}
+{#snippet actions()}
     <div class="color-row">
         <Button icon="Undo" onclick={annotations.undo}>Undo</Button>
-        <Button
-            icon="Eraser"
-            selected={annotations.erasing}
-            onclick={() => (annotations.erasing = !annotations.erasing)}
-        >Erase</Button>
+        <Button icon="Eraser" selected={annotations.erasing} onclick={() => (annotations.erasing = !annotations.erasing)}>Erase</Button>
+        <Button icon="Check" onclick={() => (annotations.panelOpen = false)}>Done</Button>
     </div>
 {/snippet}
 

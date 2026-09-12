@@ -2,15 +2,24 @@ import * as library from "$lib/library";
 import type { ReaderController } from "./reader.svelte";
 
 
+/** Draw options for an annotation. `color` is all `Overlayer.highlight`
+ *  uses today; `width` is here for ink's stroke thickness — unused by
+ *  highlights, but the shape a future ink draw function would expect. */
+export type AnnotationOption = {
+	kind: "highlight" | "ink",
+	color: string,
+	width?: number,
+}
+
 // NOTE: subject to change based on later implementation of freehand ink support
 export type Annotation = {
 	id: number,
 	bookId: number,
-	kind: "highlight" | "ink", // magari piu nel futuro 
+	kind: "highlight" | "ink", // magari piu nel futuro
 	index: number,
 	value : string, // Note this is a CFI string
 	createdAt: Date
-	option: Object
+	option: AnnotationOption
 }
 
 /** Tolerate a failed read: a book with no annotations yet still opens fine. */
@@ -35,7 +44,7 @@ export class AnnotationController {
 	annotations : Annotation[] = [];
 	sessionIds: number[] = [];
 	
-	option = $state({kind: "highlight", color: "#ffeb3b"});
+	option = $state<AnnotationOption>({kind: "highlight", color: "#ffeb3b"});
 	panelOpen = $state(false);
 	/** A mode, not a "kind" — nothing is being drawn while this is true. */
 	erasing = $state(false);
@@ -62,9 +71,20 @@ export class AnnotationController {
 		// erase mode: tapping an existing mark fires this for free
 		this.#reader.view.addEventListener("show-annotation", this.#onShowAnnotation);
 
+		// Erase mode must not survive the popover closing, however it closes
+		// (Done, click-away, Escape) — a watch on panelOpen covers all of
+		// those uniformly, since we don't get a callback for glow's own
+		// click-away/Escape dismissal, only the bound `open` value changing.
+		const disposeErase = $effect.root(() => {
+			$effect(() => {
+				if (!this.panelOpen) this.erasing = false;
+			});
+		});
+
 		return () => {
 			this.#reader.view.removeEventListener?.("relocate", this.#onRelocate);
 			this.#reader.view.removeEventListener?.("show-annotation", this.#onShowAnnotation);
+			disposeErase();
 			this.#reader = null;
 			this.annotations = [];
 			this.sessionIds = [];
@@ -120,11 +140,7 @@ export class AnnotationController {
 
 	undo = async () => {
 		const id = this.sessionIds.pop();
-		if (!id) return;
-		const annotation = this.annotations.find((a) => a.id === id);
-		this.annotations = this.annotations.filter((a) => a.id !== id);
-		await library.deleteAnnotation(id);
-		if (annotation) this.#eraseDrawing(annotation.value, id);
+		if (id) await this.#erase(id);
 	}
 
 	/** Erase mode: tapping an existing mark deletes it. `show-annotation`
@@ -133,11 +149,17 @@ export class AnnotationController {
 	#onShowAnnotation = async (e: any) => {
 		if (!this.erasing) return;
 		const id = Number(e.detail?.value);
-		if (Number.isNaN(id)) return;
-		const annotation = this.annotations.find((a) => a.id === id);
-		this.annotations = this.annotations.filter((a) => a.id !== id);
+		if (!Number.isNaN(id)) await this.#erase(id);
+	}
+
+	/** The one place undo and the eraser both end up: drop the row from the
+	 *  db, drop it from the in-memory list, take its mark off the page. */
+	async #erase(id: number) {
+		const index = this.annotations.findIndex((a) => a.id === id);
+		if (index === -1) return;
+		const [annotation] = this.annotations.splice(index, 1);
 		await library.deleteAnnotation(id);
-		if (annotation) this.#eraseDrawing(annotation.value, id);
+		this.#eraseDrawing(annotation.value, id);
 	}
 
 
@@ -155,13 +177,17 @@ export class AnnotationController {
 			switch (kind) { 
 				case "highlight":
 					this.#drawHighlight(view, id, value, option)
+					break;
 				case "ink":
 					this.#drawInk(view, id, value, option)
+					break;
+				default:
+					console.warn("Annotations: Non e sucesso un cazzo")
 			}
 		}
 	}
 
-	#drawHighlight(view: any, id : number, cfi : string, option : object) { 
+	#drawHighlight(view: any, id : number, cfi : string, option : AnnotationOption) {
 		const { index, anchor } = view.resolveCFI(cfi);
 
 		const content = view.renderer
@@ -174,7 +200,7 @@ export class AnnotationController {
 		content.overlayer.add(id.toString(), range, this.#overlayer.highlight, option)
 	}
 
-	#drawInk(view: any, id: number, value: string, option: object) { 
+	#drawInk(view: any, id: number, value: string, option: AnnotationOption) {
 		// NOT DONE YET
 		return;
 	}

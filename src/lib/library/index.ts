@@ -3,7 +3,7 @@
 // `characters`, all keyed by the same autoincrement id. There is no server, so a
 // shelf is per-browser and nothing ever leaves the device.
 
-import type { Annotation } from "$lib/reader/annnotate.svelte";
+import type { Annotation } from "$lib/reader/annotate.svelte";
 import type { CharacterIndex } from "$lib/reader/characters";
 
 /**
